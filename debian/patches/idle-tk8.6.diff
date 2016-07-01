@@ -1,0 +1,17 @@
+Index: b/Lib/idlelib/configDialog.py
+===================================================================
+--- a/Lib/idlelib/configDialog.py
++++ b/Lib/idlelib/configDialog.py
+@@ -111,7 +111,11 @@ class ConfigDialog(Toplevel):
+ 
+     def CreatePageFontTab(self):
+         parent = self.parent
+-        self.fontSize = StringVar(parent)
++        # see issue #26673
++        if TkVersion >= 8.6:
++            self.fontSize = IntVar(parent)
++        else:
++            self.fontSize = StringVar(parent)
+         self.fontBold = BooleanVar(parent)
+         self.fontName = StringVar(parent)
+         self.spaceNum = IntVar(parent)
