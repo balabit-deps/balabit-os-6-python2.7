@@ -1,3 +1,9 @@
+python2.7 (2.7.12-1~16.04bb1) UNRELEASED; urgency=medium
+
+  * Balabit patched version
+
+ -- Balabit Platform Team <devnull@dev.null>  Wed, 02 Nov 2016 14:54:19 +0100
+
 python2.7 (2.7.12-1~16.04) xenial-proposed; urgency=medium
 
   * SRU: LP: #1591895. Backport 2.7.12 to 16.04 LTS.
