@@ -68,3 +68,5 @@ reproducible-buildinfo.diff
 pydoc-use-pager.diff
 fix-sslv3-test.diff
 idle-tk8.6.diff
+CVE-2016-1000110.patch
+CVE-2017-1000158.patch
