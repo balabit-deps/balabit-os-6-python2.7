@@ -418,10 +418,12 @@ define __post_configure
 	touch -r $(1)/pyconfig.h $(1)/pyconfig.h.new
 	mv -f $(1)/pyconfig.h.new $(1)/pyconfig.h
 
-	: # this second rule doesn't build with -fPIC, remove it.
-	sed '/^Modules\/_math.o: .*PY_CORE_CFLAGS/d' $(1)/Makefile > $(1)/Makefile.fixed
-	touch -r $(1)/Makefile $(1)/Makefile.fixed
-	mv -f $(1)/Makefile.fixed $(1)/Makefile
+	: # this second rule doesn't build with -fPIC, remove it for shared builds.
+	$(if $(findstring build-sh,$(1)), \
+	  sed '/^Modules\/_math.o: .*PY_CORE_CFLAGS/d' $(1)/Makefile > $(1)/Makefile.fixed; \
+	  touch -r $(1)/Makefile $(1)/Makefile.fixed; \
+	  mv -f $(1)/Makefile.fixed $(1)/Makefile \
+	)
 endef
 
 stamps/stamp-mincheck: stamps/stamp-build-static debian/PVER-minimal.README.Debian.in
