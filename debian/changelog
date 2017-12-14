@@ -1,3 +1,27 @@
+python2.7 (2.7.12-1ubuntu0~16.04.2) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: integer overflow in the PyString_DecodeEscape
+    function
+    - debian/patches/CVE-2017-1000158.patch: fix this integer overflow
+      in Objects/stringobject.c.
+    - CVE-2017-1000158
+
+ -- Leonidas S. Barbosa <leo.barbosa@canonical.com>  Mon, 20 Nov 2017 15:23:56 -0300
+
+python2.7 (2.7.12-1ubuntu0~16.04.1) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: use of HTTP_PROXY flag supplied by attacker in CGI
+    scripts (aka HTTPOXY attack)
+    - debian/patches/CVE-2016-1000110.patch: if running as CGI
+      script, forget HTTP_PROXY in Lib/urllib.py, add test to
+      Lib/test/test_urllib.py, add documentation.
+    - CVE-2016-1000110
+  * NOTE: backport of 2.7.12 to Ubuntu 16.04 LTS also addresses:
+    - CVE-2016-0772: StartTLS stripping attack
+    - CVE-2016-5636: Integer overflow when handling zipfiles
+
+ -- Steve Beattie <sbeattie@ubuntu.com>  Fri, 18 Nov 2016 22:48:10 -0800
+
 python2.7 (2.7.12-1~16.04bb2) xenial; urgency=medium
 
   * Added hardening-wrapper
