@@ -1,3 +1,15 @@
+python2.7 (2.7.12-1ubuntu0~16.04.3) xenial-proposed; urgency=medium
+
+  * Some performance improvements: LP: #1638695.
+    - Build the _math.o object file without -fPIC for static builds.
+  * Rename md5_* functions to _Py_md5_*. Closes: #868366. LP: #1734109.
+  * Explicitly use the system python for byte compilation in postinst scripts.
+    LP: #1682934.
+  * Fix issue #22636: Avoid shell injection problems with
+    ctypes.util.find_library(). LP: #1512068.
+
+ -- Matthias Klose <doko@ubuntu.com>  Mon, 04 Dec 2017 15:50:18 +0100
+
 python2.7 (2.7.12-1ubuntu0~16.04.2bb1) xenial; urgency=medium
 
   * Balabit patched version

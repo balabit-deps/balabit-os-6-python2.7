@@ -1293,9 +1293,9 @@
  (optional)partial_reduce@Base @VER@
  (optional)partial_setstate@Base @VER@
 
- (optional)md5_append@Base @VER@
- (optional)md5_finish@Base @VER@
- (optional)md5_init@Base @VER@
+ (optional)_Py_md5_append@Base @VER@
+ (optional)_Py_md5_finish@Base @VER@
+ (optional)_Py_md5_init@Base @VER@
 
 # _check_for_multiple_distdirs@Base @VER@
  (optional)init_ast@Base @VER@
