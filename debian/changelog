@@ -1,3 +1,30 @@
+python2.7 (2.7.12-1ubuntu0~16.04.4) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: heap buffer overflow via race condition
+    - debian/patches/CVE-2018-1000030-1.patch: stop crashes when iterating
+      over a file on multiple threads in Lib/test/test_file2k.py,
+      Objects/fileobject.c.
+    - debian/patches/CVE-2018-1000030-2.patch: fix crash when multiple
+      threads iterate over a file in Lib/test/test_file2k.py,
+      Objects/fileobject.c.
+    - CVE-2018-1000030
+  * SECURITY UPDATE: command injection in shutil module
+    - debian/patches/CVE-2018-1000802.patch: use subprocess rather than
+      distutils.spawn in Lib/shutil.py.
+    - CVE-2018-1000802
+  * SECURITY UPDATE: DoS via catastrophic backtracking
+    - debian/patches/CVE-2018-106x.patch: fix expressions in
+      Lib/difflib.py, Lib/poplib.py. Added tests to
+      Lib/test/test_difflib.py, Lib/test/test_poplib.py.
+    - CVE-2018-1060
+    - CVE-2018-1061
+  * SECURITY UPDATE: incorrect Expat hash salt initialization
+    - debian/patches/CVE-2018-14647.patch: call SetHashSalt in
+      Include/pyexpat.h, Modules/_elementtree.c, Modules/pyexpat.c.
+    - CVE-2018-14647
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Mon, 12 Nov 2018 09:36:49 -0500
+
 python2.7 (2.7.12-1ubuntu0~16.04.3) xenial-proposed; urgency=medium
 
   * Some performance improvements: LP: #1638695.
