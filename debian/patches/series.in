@@ -72,3 +72,8 @@ CVE-2016-1000110.patch
 CVE-2017-1000158.patch
 issue22636.patch
 rename-md5-init.diff
+CVE-2018-1000030-1.patch
+CVE-2018-1000030-2.patch
+CVE-2018-1000802.patch
+CVE-2018-106x.patch
+CVE-2018-14647.patch
