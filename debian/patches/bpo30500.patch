@@ -1,0 +1,65 @@
+From d4324baca4c03eb8d55446cd1b74b32ec5633af5 Mon Sep 17 00:00:00 2001
+From: Victor Stinner <victor.stinner@gmail.com>
+Date: Tue, 20 Jun 2017 16:20:36 +0200
+Subject: [PATCH] bpo-30500: urllib: Simplify splithost by calling into
+ urlparse. (#1849) (#2294)
+
+The current regex based splitting produces a wrong result. For example::
+
+  http://abc#@def
+
+Web browsers parse that URL as ``http://abc/#@def``, that is, the host
+is ``abc``, the path is ``/``, and the fragment is ``#@def``.
+(cherry picked from commit 90e01e50ef8a9e6c91f30d965563c378a4ad26de)
+---
+ Lib/test/test_urllib.py | 20 ++++++++++++++++++++
+ Lib/urllib.py           |  3 +--
+ Misc/ACKS               |  1 +
+ Misc/NEWS               |  5 +++++
+ 4 files changed, 27 insertions(+), 2 deletions(-)
+
+Index: python2.7-2.7.12/Lib/test/test_urllib.py
+===================================================================
+--- python2.7-2.7.12.orig/Lib/test/test_urllib.py	2019-08-22 10:56:28.943560931 -0400
++++ python2.7-2.7.12/Lib/test/test_urllib.py	2019-08-22 10:56:28.939560919 -0400
+@@ -903,6 +903,26 @@ class Utility_Tests(unittest.TestCase):
+         self.assertEqual(splithost('/foo/bar/baz.html'),
+                          (None, '/foo/bar/baz.html'))
+ 
++        # bpo-30500: # starts a fragment.
++        self.assertEqual(splithost('//127.0.0.1#@host.com'),
++                         ('127.0.0.1', '/#@host.com'))
++        self.assertEqual(splithost('//127.0.0.1#@host.com:80'),
++                         ('127.0.0.1', '/#@host.com:80'))
++        self.assertEqual(splithost('//127.0.0.1:80#@host.com'),
++                         ('127.0.0.1:80', '/#@host.com'))
++
++        # Empty host is returned as empty string.
++        self.assertEqual(splithost("///file"),
++                         ('', '/file'))
++
++        # Trailing semicolon, question mark and hash symbol are kept.
++        self.assertEqual(splithost("//example.net/file;"),
++                         ('example.net', '/file;'))
++        self.assertEqual(splithost("//example.net/file?"),
++                         ('example.net', '/file?'))
++        self.assertEqual(splithost("//example.net/file#"),
++                         ('example.net', '/file#'))
++
+     def test_splituser(self):
+         splituser = urllib.splituser
+         self.assertEqual(splituser('User:Pass@www.python.org:080'),
+Index: python2.7-2.7.12/Lib/urllib.py
+===================================================================
+--- python2.7-2.7.12.orig/Lib/urllib.py	2019-08-22 10:56:28.943560931 -0400
++++ python2.7-2.7.12/Lib/urllib.py	2019-08-22 10:56:28.939560919 -0400
+@@ -1096,8 +1096,7 @@ def splithost(url):
+     """splithost('//host[:port]/path') --> 'host[:port]', '/path'."""
+     global _hostprog
+     if _hostprog is None:
+-        import re
+-        _hostprog = re.compile('^//([^/?]*)(.*)$')
++        _hostprog = re.compile('//([^/#?]*)(.*)', re.DOTALL)
+ 
+     match = _hostprog.match(url)
+     if match:
