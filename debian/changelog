@@ -1,3 +1,18 @@
+python2.7 (2.7.12-1ubuntu0~16.04.9) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: incorrect email address parsing
+    - debian/patches/CVE-2019-16056.patch: don't parse domains containing @
+      in Lib/email/_parseaddr.py, Lib/test/test_email/test_email.py.
+    - CVE-2019-16056
+  * SECURITY UPDATE: XSS in documentation XML-RPC server
+    - debian/patches/CVE-2019-16935.patch: escape the server_title in
+      Lib/DocXMLRPCServer.py, Lib/test/test_docxmlrpc.py.
+    - CVE-2019-16935
+  * debian/patches/avoid_test_docxmlrpc_race.patch: avoid race in
+    test_docxmlrpc server setup in Lib/test/test_docxmlrpc.py.
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 08 Oct 2019 10:14:10 -0400
+
 python2.7 (2.7.12-1ubuntu0~16.04.8) xenial-security; urgency=medium
 
   * SECURITY UPDATE: incorrect cookie domain check
