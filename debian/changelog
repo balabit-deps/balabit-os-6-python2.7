@@ -1,3 +1,21 @@
+python2.7 (2.7.12-1ubuntu0~16.04.16) xenial-security; urgency=medium
+
+  * SECURITY REGRESSION: previous update caused a regression that causes it
+    pending further investigation this update reverts it
+    - debian/patches/CVE-2021-3177.patch: was removed.
+
+ -- Leonidas Da Silva Barbosa <leo.barbosa@canonical.com>  Thu, 25 Feb 2021 11:00:40 -0300
+
+python2.7 (2.7.12-1ubuntu0~16.04.14) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: Buffer overflow
+    - debian/patches/CVE-2021-3177.patch: replace snprintf with Python unicode
+      formatting in ctypes param reprs in Lib/ctypes/test/test_parameters.py,
+      Modules/_ctypes/callproc.c.
+    - CVE-2021-3177
+
+ -- Leonidas Da Silva Barbosa <leo.barbosa@canonical.com>  Mon, 01 Feb 2021 16:20:16 -0300
+
 python2.7 (2.7.12-1ubuntu0~16.04.13bb1) xenial; urgency=medium
 
   * Balabit patched version
