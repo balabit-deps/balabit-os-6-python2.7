@@ -1,0 +1,521 @@
+Description: backport test changes and more ssl certs
+Origin: backported from bionic python2.7 package
+
+--- a/Lib/test/test_ssl.py
++++ b/Lib/test/test_ssl.py
+@@ -1585,34 +1607,6 @@ class NetworkedTests(unittest.TestCase):
+                                         cert_reqs=ssl.CERT_NONE, ciphers="^$:,;?*'dorothyx")
+                     s.connect(remote)
+ 
+-    def test_algorithms(self):
+-        # Issue #8484: all algorithms should be available when verifying a
+-        # certificate.
+-        # SHA256 was added in OpenSSL 0.9.8
+-        if ssl.OPENSSL_VERSION_INFO < (0, 9, 8, 0, 15):
+-            self.skipTest("SHA256 not available on %r" % ssl.OPENSSL_VERSION)
+-        # sha256.tbs-internet.com needs SNI to use the correct certificate
+-        if not ssl.HAS_SNI:
+-            self.skipTest("SNI needed for this test")
+-        # https://sha2.hboeck.de/ was used until 2011-01-08 (no route to host)
+-        remote = ("sha256.tbs-internet.com", 443)
+-        sha256_cert = os.path.join(os.path.dirname(__file__), "sha256.pem")
+-        with support.transient_internet("sha256.tbs-internet.com"):
+-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+-            ctx.verify_mode = ssl.CERT_REQUIRED
+-            ctx.load_verify_locations(sha256_cert)
+-            s = ctx.wrap_socket(socket.socket(socket.AF_INET),
+-                                server_hostname="sha256.tbs-internet.com")
+-            try:
+-                s.connect(remote)
+-                if support.verbose:
+-                    sys.stdout.write("\nCipher with %r is %r\n" %
+-                                     (remote, s.cipher()))
+-                    sys.stdout.write("Certificate is:\n%s\n" %
+-                                     pprint.pformat(s.getpeercert()))
+-            finally:
+-                s.close()
+-
+     def test_get_ca_certs_capath(self):
+         # capath certs are loaded on request
+         with support.transient_internet(REMOTE_HOST):
+@@ -1792,7 +1786,7 @@ else:
+             else:
+                 self.context = ssl.SSLContext(ssl_version
+                                               if ssl_version is not None
+-                                              else ssl.PROTOCOL_TLSv1)
++                                              else ssl.PROTOCOL_SSLv23)
+                 self.context.verify_mode = (certreqs if certreqs is not None
+                                             else ssl.CERT_NONE)
+                 if cacerts:
+@@ -1952,6 +1946,8 @@ else:
+             self.join()
+             if support.verbose:
+                 sys.stdout.write(" cleanup: successfully joined.\n")
++            # make sure that ConnectionHandler is removed from socket_map
++            asyncore.close_all(ignore_all=True)
+ 
+         def start(self, flag=None):
+             self.flag = flag
+@@ -2766,19 +2762,22 @@ else:
+                     sock.do_handshake()
+                 self.assertEqual(cm.exception.errno, errno.ENOTCONN)
+ 
+-        def test_default_ciphers(self):
+-            context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+-            try:
+-                # Force a set of weak ciphers on our client context
+-                context.set_ciphers("DES")
+-            except ssl.SSLError:
+-                self.skipTest("no DES cipher available")
+-            with ThreadedEchoServer(CERTFILE,
+-                                    ssl_version=ssl.PROTOCOL_SSLv23,
+-                                    chatty=False) as server:
+-                with closing(context.wrap_socket(socket.socket())) as s:
+-                    with self.assertRaises(ssl.SSLError):
+-                        s.connect((HOST, server.port))
++        def test_no_shared_ciphers(self):
++            server_context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
++            server_context.load_cert_chain(SIGNED_CERTFILE)
++            client_context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
++            client_context.verify_mode = ssl.CERT_REQUIRED
++            client_context.check_hostname = True
++
++            # Force different suites on client and master
++            client_context.set_ciphers("AES128")
++            server_context.set_ciphers("AES256")
++            with ThreadedEchoServer(context=server_context) as server:
++                s = client_context.wrap_socket(
++                        socket.socket(),
++                        server_hostname="localhost")
++                with self.assertRaises(ssl.SSLError):
++                    s.connect((HOST, server.port))
+             self.assertIn("no shared cipher", str(server.conn_errors[0]))
+ 
+         def test_version_basic(self):
+@@ -2793,7 +2792,7 @@ else:
+                 with closing(context.wrap_socket(socket.socket())) as s:
+                     self.assertIs(s.version(), None)
+                     s.connect((HOST, server.port))
+-                    self.assertEqual(s.version(), "TLSv1")
++                    self.assertEqual(s.version(), 'TLSv1')
+                 self.assertIs(s.version(), None)
+ 
+         @unittest.skipUnless(ssl.HAS_ECDH, "test requires ECDH-enabled OpenSSL")
+@@ -2935,24 +2934,32 @@ else:
+                 (['http/3.0', 'http/4.0'], None)
+             ]
+             for client_protocols, expected in protocol_tests:
+-                server_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
++                server_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+                 server_context.load_cert_chain(CERTFILE)
+                 server_context.set_alpn_protocols(server_protocols)
+-                client_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
++                client_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+                 client_context.load_cert_chain(CERTFILE)
+                 client_context.set_alpn_protocols(client_protocols)
+-                stats = server_params_test(client_context, server_context,
+-                                           chatty=True, connectionchatty=True)
++
++                try:
++                    stats = server_params_test(client_context,
++                                               server_context,
++                                               chatty=True,
++                                               connectionchatty=True)
++                except ssl.SSLError as e:
++                    stats = e
+ 
+                 msg = "failed trying %s (s) and %s (c).\n" \
+-                      "was expecting %s, but got %%s from the %%s" \
+-                          % (str(server_protocols), str(client_protocols),
+-                             str(expected))
++                    "was expecting %s, but got %%s from the %%s" \
++                        % (str(server_protocols), str(client_protocols),
++                            str(expected))
+                 client_result = stats['client_alpn_protocol']
+-                self.assertEqual(client_result, expected, msg % (client_result, "client"))
++                self.assertEqual(client_result, expected,
++                                 msg % (client_result, "client"))
+                 server_result = stats['server_alpn_protocols'][-1] \
+                     if len(stats['server_alpn_protocols']) else 'nothing'
+-                self.assertEqual(server_result, expected, msg % (server_result, "server"))
++                self.assertEqual(server_result, expected,
++                                 msg % (server_result, "server"))
+ 
+         def test_selected_npn_protocol(self):
+             # selected_npn_protocol() is None unless NPN is used
+--- /dev/null
++++ b/Lib/test/capath/efa5f9c3.0
+@@ -0,0 +1,34 @@
++-----BEGIN CERTIFICATE-----
++MIIF9zCCA9+gAwIBAgIUH98b4Fw/DyugC9cV7VK7ZODzHsIwDQYJKoZIhvcNAQEL
++BQAwgYoxCzAJBgNVBAYTAlhZMRcwFQYDVQQIDA5DYXN0bGUgQW50aHJheDEYMBYG
++A1UEBwwPQXJndW1lbnQgQ2xpbmljMSMwIQYDVQQKDBpQeXRob24gU29mdHdhcmUg
++Rm91bmRhdGlvbjEjMCEGA1UEAwwac2VsZi1zaWduZWQucHl0aG9udGVzdC5uZXQw
++HhcNMTkwNTA4MDEwMjQzWhcNMjcwNzI0MDEwMjQzWjCBijELMAkGA1UEBhMCWFkx
++FzAVBgNVBAgMDkNhc3RsZSBBbnRocmF4MRgwFgYDVQQHDA9Bcmd1bWVudCBDbGlu
++aWMxIzAhBgNVBAoMGlB5dGhvbiBTb2Z0d2FyZSBGb3VuZGF0aW9uMSMwIQYDVQQD
++DBpzZWxmLXNpZ25lZC5weXRob250ZXN0Lm5ldDCCAiIwDQYJKoZIhvcNAQEBBQAD
++ggIPADCCAgoCggIBAMKdJlyCThkahwoBb7pl5q64Pe9Fn5jrIvzsveHTc97TpjV2
++RLfICnXKrltPk/ohkVl6K5SUZQZwMVzFubkyxE0nZPHYHlpiKWQxbsYVkYv01rix
++IFdLvaxxbGYke2jwQao31s4o61AdlsfK1SdpHQUynBBMssqI3SB4XPmcA7e+wEEx
++jxjVish4ixA1vuIZOx8yibu+CFCf/geEjoBMF3QPdzULzlrCSw8k/45iZCSoNbvK
++DoL4TVV07PHOxpheDh8ZQmepGvU6pVqhb9m4lgmV0OGWHgozd5Ur9CbTVDmxIEz3
++TSoRtNJK7qtyZdGNqwjksQxgZTjM/d/Lm/BJG99AiOmYOjsl9gbQMZgvQmMAtUsI
++aMJnQuZ6R+KEpW/TR5qSKLWZSG45z/op+tzI2m+cE6HwTRVAWbcuJxcAA55MZjqU
++OOOu3BBYMjS5nf2sQ9uoXsVBFH7i0mQqoW1SLzr9opI8KsWwFxQmO2vBxWYaN+lH
++OmwBZBwyODIsmI1YGXmTp09NxRYz3Qe5GCgFzYowpMrcxUC24iduIdMwwhRM7rKg
++7GtIWMSrFfuI1XCLRmSlhDbhNN6fVg2f8Bo9PdH9ihiIyxSrc+FOUasUYCCJvlSZ
++8hFUlLvcmrZlWuazohm0lsXuMK1JflmQr/DA/uXxP9xzFfRy+RU3jDyxJbRHAgMB
++AAGjUzBRMB0GA1UdDgQWBBSQJyxiPMRK01i+0BsV9zUwDiBaHzAfBgNVHSMEGDAW
++gBSQJyxiPMRK01i+0BsV9zUwDiBaHzAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3
++DQEBCwUAA4ICAQCR+7a7N/m+WLkxPPIA/CB4MOr2Uf8ixTv435Nyv6rXOun0+lTP
++ExSZ0uYQ+L0WylItI3cQHULldDueD+s8TGzxf5woaLKf6tqyr0NYhKs+UeNEzDnN
++9PHQIhX0SZw3XyXGUgPNBfRCg2ZDdtMMdOU4XlQN/IN/9hbYTrueyY7eXq9hmtI9
++1srftAMqr9SR1JP7aHI6DVgrEsZVMTDnfT8WmLSGLlY1HmGfdEn1Ip5sbo9uSkiH
++AEPgPfjYIvR5LqTOMn4KsrlZyBbFIDh9Sl99M1kZzgH6zUGVLCDg1y6Cms69fx/e
++W1HoIeVkY4b4TY7Bk7JsqyNhIuqu7ARaxkdaZWhYaA2YyknwANdFfNpfH+elCLIk
++BUt5S3f4i7DaUePTvKukCZiCq4Oyln7RcOn5If73wCeLB/ZM9Ei1HforyLWP1CN8
++XLfpHaoeoPSWIveI0XHUl65LsPN2UbMbul/F23hwl+h8+BLmyAS680Yhn4zEN6Ku
++B7Po90HoFa1Du3bmx4jsN73UkT/dwMTi6K072FbipnC1904oGlWmLwvAHvrtxxmL
++Pl3pvEaZIu8wa/PNF6Y7J7VIewikIJq6Ta6FrWeFfzMWOj2qA1ZZi6fUaDSNYvuV
++J5quYKCc/O+I/yDDf8wyBbZ/gvUXzUHTMYGG+bFrn1p7XDbYYeEJ6R/xEg==
++-----END CERTIFICATE-----
+--- a/Lib/test/test_httplib.py
++++ b/Lib/test/test_httplib.py
+@@ -768,7 +768,7 @@ class HTTPSTest(TestCase):
+         import ssl
+         test_support.requires('network')
+         with test_support.transient_internet('self-signed.pythontest.net'):
+-            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
++            context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+             context.verify_mode = ssl.CERT_REQUIRED
+             context.load_verify_locations(CERT_selfsigned_pythontestdotnet)
+             h = httplib.HTTPSConnection('self-signed.pythontest.net', 443, context=context)
+@@ -782,7 +782,7 @@ class HTTPSTest(TestCase):
+         import ssl
+         test_support.requires('network')
+         with test_support.transient_internet('self-signed.pythontest.net'):
+-            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
++            context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+             context.verify_mode = ssl.CERT_REQUIRED
+             context.load_verify_locations(CERT_localhost)
+             h = httplib.HTTPSConnection('self-signed.pythontest.net', 443, context=context)
+@@ -803,7 +803,7 @@ class HTTPSTest(TestCase):
+         # The (valid) cert validates the HTTP hostname
+         import ssl
+         server = self.make_server(CERT_localhost)
+-        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
++        context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+         context.verify_mode = ssl.CERT_REQUIRED
+         context.load_verify_locations(CERT_localhost)
+         h = httplib.HTTPSConnection('localhost', server.port, context=context)
+@@ -815,7 +815,7 @@ class HTTPSTest(TestCase):
+         # The (valid) cert doesn't validate the HTTP hostname
+         import ssl
+         server = self.make_server(CERT_fakehostname)
+-        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
++        context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+         context.verify_mode = ssl.CERT_REQUIRED
+         context.check_hostname = True
+         context.load_verify_locations(CERT_fakehostname)
+--- a/Lib/test/test_support.py
++++ b/Lib/test/test_support.py
+@@ -665,6 +665,10 @@ else:
+ # module name.
+ TESTFN = "{}_{}_tmp".format(TESTFN, os.getpid())
+ 
++# Define the URL of a dedicated HTTP server for the network tests.
++# The URL must use clear-text HTTP: no redirection to encrypted HTTPS.
++TEST_HTTP_URL = "http://www.pythontest.net"
++
+ # Save the initial cwd
+ SAVEDCWD = os.getcwd()
+ 
+--- a/Lib/test/test_urllib2net.py
++++ b/Lib/test/test_urllib2net.py
+@@ -25,6 +25,13 @@ def _wrap_with_retry_thrice(func, exc):
+         return _retry_thrice(func, exc, *args, **kwargs)
+     return wrapped
+ 
++# bpo-35411: FTP tests of test_urllib2net randomly fail
++# with "425 Security: Bad IP connecting" on Travis CI
++skip_ftp_test_on_travis = unittest.skipIf('TRAVIS' in os.environ,
++                                          'bpo-35411: skip FTP test '
++                                          'on Travis CI')
++
++
+ # Connecting to remote hosts is flaky.  Make it more robust by retrying
+ # the connection several times.
+ _urlopen_with_retry = _wrap_with_retry_thrice(urllib2.urlopen, urllib2.URLError)
+@@ -78,7 +85,7 @@ class CloseSocketTest(unittest.TestCase)
+         # underlying socket
+ 
+         # delve deep into response to fetch socket._socketobject
+-        response = _urlopen_with_retry("http://www.example.com/")
++        response = _urlopen_with_retry(test_support.TEST_HTTP_URL)
+         abused_fileobject = response.fp
+         self.assertIs(abused_fileobject.__class__, socket._fileobject)
+         httpresponse = abused_fileobject._sock
+@@ -100,10 +107,11 @@ class OtherNetworkTests(unittest.TestCas
+     # XXX The rest of these tests aren't very good -- they don't check much.
+     # They do sometimes catch some major disasters, though.
+ 
++    @skip_ftp_test_on_travis
+     def test_ftp(self):
+         urls = [
+-            'ftp://ftp.debian.org/debian/README',
+-            ('ftp://ftp.debian.org/debian/non-existent-file',
++            'ftp://www.pythontest.net/README',
++            ('ftp://www.pythontest.net/non-existent-file',
+              None, urllib2.URLError),
+             ]
+         self._test_urls(urls, self._extra_handlers())
+@@ -161,7 +169,7 @@ class OtherNetworkTests(unittest.TestCas
+                     "http://www.pythontest.net/index.html#frag")
+ 
+     def test_fileno(self):
+-        req = urllib2.Request("http://www.example.com")
++        req = urllib2.Request(test_support.TEST_HTTP_URL)
+         opener = urllib2.build_opener()
+         res = opener.open(req)
+         try:
+@@ -172,7 +180,7 @@ class OtherNetworkTests(unittest.TestCas
+             res.close()
+ 
+     def test_custom_headers(self):
+-        url = "http://www.example.com"
++        url = test_support.TEST_HTTP_URL
+         with test_support.transient_internet(url):
+             opener = urllib2.build_opener()
+             request = urllib2.Request(url)
+@@ -184,6 +192,7 @@ class OtherNetworkTests(unittest.TestCas
+             opener.open(request)
+             self.assertEqual(request.get_header('User-agent'),'Test-Agent')
+ 
++    @unittest.skip('XXX: http://www.imdb.com is gone')
+     def test_sites_no_connection_close(self):
+         # Some sites do not send Connection: close header.
+         # Verify that those work properly. (#issue12576)
+@@ -249,14 +258,14 @@ class OtherNetworkTests(unittest.TestCas
+ class TimeoutTest(unittest.TestCase):
+     def test_http_basic(self):
+         self.assertIsNone(socket.getdefaulttimeout())
+-        url = "http://www.example.com"
++        url = test_support.TEST_HTTP_URL
+         with test_support.transient_internet(url, timeout=None):
+             u = _urlopen_with_retry(url)
+             self.assertIsNone(u.fp._sock.fp._sock.gettimeout())
+ 
+     def test_http_default_timeout(self):
+         self.assertIsNone(socket.getdefaulttimeout())
+-        url = "http://www.example.com"
++        url = test_support.TEST_HTTP_URL
+         with test_support.transient_internet(url):
+             socket.setdefaulttimeout(60)
+             try:
+@@ -267,7 +276,7 @@ class TimeoutTest(unittest.TestCase):
+ 
+     def test_http_no_timeout(self):
+         self.assertIsNone(socket.getdefaulttimeout())
+-        url = "http://www.example.com"
++        url = test_support.TEST_HTTP_URL
+         with test_support.transient_internet(url):
+             socket.setdefaulttimeout(60)
+             try:
+@@ -277,19 +286,21 @@ class TimeoutTest(unittest.TestCase):
+             self.assertIsNone(u.fp._sock.fp._sock.gettimeout())
+ 
+     def test_http_timeout(self):
+-        url = "http://www.example.com"
++        url = test_support.TEST_HTTP_URL
+         with test_support.transient_internet(url):
+             u = _urlopen_with_retry(url, timeout=120)
+             self.assertEqual(u.fp._sock.fp._sock.gettimeout(), 120)
+ 
+-    FTP_HOST = 'ftp://ftp.debian.org/debian/'
++    FTP_HOST = 'ftp://www.pythontest.net/'
+ 
++    @skip_ftp_test_on_travis
+     def test_ftp_basic(self):
+         self.assertIsNone(socket.getdefaulttimeout())
+         with test_support.transient_internet(self.FTP_HOST, timeout=None):
+             u = _urlopen_with_retry(self.FTP_HOST)
+             self.assertIsNone(u.fp.fp._sock.gettimeout())
+ 
++    @skip_ftp_test_on_travis
+     def test_ftp_default_timeout(self):
+         self.assertIsNone(socket.getdefaulttimeout())
+         with test_support.transient_internet(self.FTP_HOST):
+@@ -300,6 +311,7 @@ class TimeoutTest(unittest.TestCase):
+                 socket.setdefaulttimeout(None)
+             self.assertEqual(u.fp.fp._sock.gettimeout(), 60)
+ 
++    @skip_ftp_test_on_travis
+     def test_ftp_no_timeout(self):
+         self.assertIsNone(socket.getdefaulttimeout(),)
+         with test_support.transient_internet(self.FTP_HOST):
+@@ -310,6 +322,7 @@ class TimeoutTest(unittest.TestCase):
+                 socket.setdefaulttimeout(None)
+             self.assertIsNone(u.fp.fp._sock.gettimeout())
+ 
++    @skip_ftp_test_on_travis
+     def test_ftp_timeout(self):
+         with test_support.transient_internet(self.FTP_HOST):
+             u = _urlopen_with_retry(self.FTP_HOST, timeout=60)
+--- a/Lib/test/test_urllibnet.py
++++ b/Lib/test/test_urllibnet.py
+@@ -43,7 +43,7 @@ class URLTimeoutTest(unittest.TestCase):
+         socket.setdefaulttimeout(None)
+ 
+     def testURLread(self):
+-        f = _open_with_retry(urllib.urlopen, "http://www.example.com/")
++        f = _open_with_retry(urllib.urlopen, test_support.TEST_HTTP_URL)
+         x = f.read()
+ 
+ class urlopenNetworkTests(unittest.TestCase):
+@@ -66,7 +66,7 @@ class urlopenNetworkTests(unittest.TestC
+ 
+     def test_basic(self):
+         # Simple test expected to pass.
+-        open_url = self.urlopen("http://www.example.com/")
++        open_url = self.urlopen(test_support.TEST_HTTP_URL)
+         for attr in ("read", "readline", "readlines", "fileno", "close",
+                      "info", "geturl"):
+             self.assertTrue(hasattr(open_url, attr), "object returned from "
+@@ -78,7 +78,7 @@ class urlopenNetworkTests(unittest.TestC
+ 
+     def test_readlines(self):
+         # Test both readline and readlines.
+-        open_url = self.urlopen("http://www.example.com/")
++        open_url = self.urlopen(test_support.TEST_HTTP_URL)
+         try:
+             self.assertIsInstance(open_url.readline(), basestring,
+                                   "readline did not return a string")
+@@ -89,7 +89,7 @@ class urlopenNetworkTests(unittest.TestC
+ 
+     def test_info(self):
+         # Test 'info'.
+-        open_url = self.urlopen("http://www.example.com/")
++        open_url = self.urlopen(test_support.TEST_HTTP_URL)
+         try:
+             info_obj = open_url.info()
+         finally:
+@@ -101,13 +101,12 @@ class urlopenNetworkTests(unittest.TestC
+ 
+     def test_geturl(self):
+         # Make sure same URL as opened is returned by geturl.
+-        URL = "http://www.example.com/"
+-        open_url = self.urlopen(URL)
++        open_url = self.urlopen(test_support.TEST_HTTP_URL)
+         try:
+             gotten_url = open_url.geturl()
+         finally:
+             open_url.close()
+-        self.assertEqual(gotten_url, URL)
++        self.assertEqual(gotten_url, test_support.TEST_HTTP_URL)
+ 
+     def test_getcode(self):
+         # test getcode() with the fancy opener to get 404 error codes
+@@ -123,12 +122,13 @@ class urlopenNetworkTests(unittest.TestC
+     @unittest.skipUnless(hasattr(os, 'fdopen'), 'os.fdopen not available')
+     def test_fileno(self):
+         # Make sure fd returned by fileno is valid.
+-        open_url = self.urlopen("http://www.example.com/")
++        open_url = self.urlopen(test_support.TEST_HTTP_URL)
+         fd = open_url.fileno()
+         FILE = os.fdopen(fd)
+         try:
+-            self.assertTrue(FILE.read(), "reading from file created using fd "
+-                                      "returned by fileno failed")
++            self.assertTrue(FILE.read(),
++                            "reading from file created using fd "
++                            "returned by fileno failed")
+         finally:
+             FILE.close()
+ 
+@@ -161,7 +161,7 @@ class urlretrieveNetworkTests(unittest.T
+ 
+     def test_basic(self):
+         # Test basic functionality.
+-        file_location,info = self.urlretrieve("http://www.example.com/")
++        file_location,info = self.urlretrieve(test_support.TEST_HTTP_URL)
+         self.assertTrue(os.path.exists(file_location), "file location returned by"
+                         " urlretrieve is not a valid path")
+         FILE = file(file_location)
+@@ -174,7 +174,7 @@ class urlretrieveNetworkTests(unittest.T
+ 
+     def test_specified_path(self):
+         # Make sure that specifying the location of the file to write to works.
+-        file_location,info = self.urlretrieve("http://www.example.com/",
++        file_location,info = self.urlretrieve(test_support.TEST_HTTP_URL,
+                                               test_support.TESTFN)
+         self.assertEqual(file_location, test_support.TESTFN)
+         self.assertTrue(os.path.exists(file_location))
+@@ -187,13 +187,13 @@ class urlretrieveNetworkTests(unittest.T
+ 
+     def test_header(self):
+         # Make sure header returned as 2nd value from urlretrieve is good.
+-        file_location, header = self.urlretrieve("http://www.example.com/")
++        file_location, header = self.urlretrieve(test_support.TEST_HTTP_URL)
+         os.unlink(file_location)
+         self.assertIsInstance(header, mimetools.Message,
+                               "header is not an instance of mimetools.Message")
+ 
+     def test_data_header(self):
+-        logo = "http://www.example.com/"
++        logo = test_support.TEST_HTTP_URL
+         file_location, fileheaders = self.urlretrieve(logo)
+         os.unlink(file_location)
+         datevalue = fileheaders.getheader('Date')
+--- a/Lib/test/selfsigned_pythontestdotnet.pem
++++ b/Lib/test/selfsigned_pythontestdotnet.pem
+@@ -1,16 +1,34 @@
+ -----BEGIN CERTIFICATE-----
+-MIIClTCCAf6gAwIBAgIJAKGU95wKR8pTMA0GCSqGSIb3DQEBBQUAMHAxCzAJBgNV
+-BAYTAlhZMRcwFQYDVQQHDA5DYXN0bGUgQW50aHJheDEjMCEGA1UECgwaUHl0aG9u
+-IFNvZnR3YXJlIEZvdW5kYXRpb24xIzAhBgNVBAMMGnNlbGYtc2lnbmVkLnB5dGhv
+-bnRlc3QubmV0MB4XDTE0MTEwMjE4MDkyOVoXDTI0MTAzMDE4MDkyOVowcDELMAkG
+-A1UEBhMCWFkxFzAVBgNVBAcMDkNhc3RsZSBBbnRocmF4MSMwIQYDVQQKDBpQeXRo
+-b24gU29mdHdhcmUgRm91bmRhdGlvbjEjMCEGA1UEAwwac2VsZi1zaWduZWQucHl0
+-aG9udGVzdC5uZXQwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBANDXQXW9tjyZ
+-Xt0Iv2tLL1+jinr4wGg36ioLDLFkMf+2Y1GL0v0BnKYG4N1OKlAU15LXGeGer8vm
+-Sv/yIvmdrELvhAbbo3w4a9TMYQA4XkIVLdvu3mvNOAet+8PMJxn26dbDhG809ALv
+-EHY57lQsBS3G59RZyBPVqAqmImWNJnVzAgMBAAGjNzA1MCUGA1UdEQQeMByCGnNl
+-bGYtc2lnbmVkLnB5dGhvbnRlc3QubmV0MAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcN
+-AQEFBQADgYEAIuzAhgMouJpNdf3URCHIineyoSt6WK/9+eyUcjlKOrDoXNZaD72h
+-TXMeKYoWvJyVcSLKL8ckPtDobgP2OTt0UkyAaj0n+ZHaqq1lH2yVfGUA1ILJv515
+-C8BqbvVZuqm3i7ygmw3bqE/lYMgOrYtXXnqOrz6nvsE6Yc9V9rFflOM=
++MIIF9zCCA9+gAwIBAgIUH98b4Fw/DyugC9cV7VK7ZODzHsIwDQYJKoZIhvcNAQEL
++BQAwgYoxCzAJBgNVBAYTAlhZMRcwFQYDVQQIDA5DYXN0bGUgQW50aHJheDEYMBYG
++A1UEBwwPQXJndW1lbnQgQ2xpbmljMSMwIQYDVQQKDBpQeXRob24gU29mdHdhcmUg
++Rm91bmRhdGlvbjEjMCEGA1UEAwwac2VsZi1zaWduZWQucHl0aG9udGVzdC5uZXQw
++HhcNMTkwNTA4MDEwMjQzWhcNMjcwNzI0MDEwMjQzWjCBijELMAkGA1UEBhMCWFkx
++FzAVBgNVBAgMDkNhc3RsZSBBbnRocmF4MRgwFgYDVQQHDA9Bcmd1bWVudCBDbGlu
++aWMxIzAhBgNVBAoMGlB5dGhvbiBTb2Z0d2FyZSBGb3VuZGF0aW9uMSMwIQYDVQQD
++DBpzZWxmLXNpZ25lZC5weXRob250ZXN0Lm5ldDCCAiIwDQYJKoZIhvcNAQEBBQAD
++ggIPADCCAgoCggIBAMKdJlyCThkahwoBb7pl5q64Pe9Fn5jrIvzsveHTc97TpjV2
++RLfICnXKrltPk/ohkVl6K5SUZQZwMVzFubkyxE0nZPHYHlpiKWQxbsYVkYv01rix
++IFdLvaxxbGYke2jwQao31s4o61AdlsfK1SdpHQUynBBMssqI3SB4XPmcA7e+wEEx
++jxjVish4ixA1vuIZOx8yibu+CFCf/geEjoBMF3QPdzULzlrCSw8k/45iZCSoNbvK
++DoL4TVV07PHOxpheDh8ZQmepGvU6pVqhb9m4lgmV0OGWHgozd5Ur9CbTVDmxIEz3
++TSoRtNJK7qtyZdGNqwjksQxgZTjM/d/Lm/BJG99AiOmYOjsl9gbQMZgvQmMAtUsI
++aMJnQuZ6R+KEpW/TR5qSKLWZSG45z/op+tzI2m+cE6HwTRVAWbcuJxcAA55MZjqU
++OOOu3BBYMjS5nf2sQ9uoXsVBFH7i0mQqoW1SLzr9opI8KsWwFxQmO2vBxWYaN+lH
++OmwBZBwyODIsmI1YGXmTp09NxRYz3Qe5GCgFzYowpMrcxUC24iduIdMwwhRM7rKg
++7GtIWMSrFfuI1XCLRmSlhDbhNN6fVg2f8Bo9PdH9ihiIyxSrc+FOUasUYCCJvlSZ
++8hFUlLvcmrZlWuazohm0lsXuMK1JflmQr/DA/uXxP9xzFfRy+RU3jDyxJbRHAgMB
++AAGjUzBRMB0GA1UdDgQWBBSQJyxiPMRK01i+0BsV9zUwDiBaHzAfBgNVHSMEGDAW
++gBSQJyxiPMRK01i+0BsV9zUwDiBaHzAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3
++DQEBCwUAA4ICAQCR+7a7N/m+WLkxPPIA/CB4MOr2Uf8ixTv435Nyv6rXOun0+lTP
++ExSZ0uYQ+L0WylItI3cQHULldDueD+s8TGzxf5woaLKf6tqyr0NYhKs+UeNEzDnN
++9PHQIhX0SZw3XyXGUgPNBfRCg2ZDdtMMdOU4XlQN/IN/9hbYTrueyY7eXq9hmtI9
++1srftAMqr9SR1JP7aHI6DVgrEsZVMTDnfT8WmLSGLlY1HmGfdEn1Ip5sbo9uSkiH
++AEPgPfjYIvR5LqTOMn4KsrlZyBbFIDh9Sl99M1kZzgH6zUGVLCDg1y6Cms69fx/e
++W1HoIeVkY4b4TY7Bk7JsqyNhIuqu7ARaxkdaZWhYaA2YyknwANdFfNpfH+elCLIk
++BUt5S3f4i7DaUePTvKukCZiCq4Oyln7RcOn5If73wCeLB/ZM9Ei1HforyLWP1CN8
++XLfpHaoeoPSWIveI0XHUl65LsPN2UbMbul/F23hwl+h8+BLmyAS680Yhn4zEN6Ku
++B7Po90HoFa1Du3bmx4jsN73UkT/dwMTi6K072FbipnC1904oGlWmLwvAHvrtxxmL
++Pl3pvEaZIu8wa/PNF6Y7J7VIewikIJq6Ta6FrWeFfzMWOj2qA1ZZi6fUaDSNYvuV
++J5quYKCc/O+I/yDDf8wyBbZ/gvUXzUHTMYGG+bFrn1p7XDbYYeEJ6R/xEg==
+ -----END CERTIFICATE-----
+
