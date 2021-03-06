@@ -97,3 +97,7 @@ CVE-2019-17514.patch
 CVE-2019-20907.patch
 CVE-2019-9674.patch
 CVE-2020-26116.patch
+CVE-2021-3177.patch
+ssl-certs-1.patch
+ssl-certs-2.patch
+test-ssl.patch

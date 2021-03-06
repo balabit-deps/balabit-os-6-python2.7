@@ -1,3 +1,16 @@
+python2.7 (2.7.12-1ubuntu0~16.04.18) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: Buffer overflow
+    - debian/patches/CVE-2021-3177.patch: use improved patch backport.
+    - CVE-2021-3177
+  * Fix autopkgtests due to expired certificates
+    - debian/patches/ssl-certs-1.patch: Refresh expired SSL test certs
+    - debian/patches/ssl-certs-2.patch: Refresh expired SSL test certs
+    - debian/patches/test-ssl.patch: backport test changes and more ssl
+      certs from python2.7 in bionic.
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Mon, 01 Mar 2021 06:38:31 -0500
+
 python2.7 (2.7.12-1ubuntu0~16.04.16bb1) xenial; urgency=medium
 
   * Balabit patched version
