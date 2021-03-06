@@ -1,3 +1,9 @@
+python2.7 (2.7.12-1ubuntu0~16.04.18bb1) xenial; urgency=medium
+
+  * Balabit patched version
+
+ -- Balabit Platform Team <devnull@dev.null>  Sat, 06 Mar 2021 04:27:37 +0100
+
 python2.7 (2.7.12-1ubuntu0~16.04.18) xenial-security; urgency=medium
 
   * SECURITY UPDATE: Buffer overflow
